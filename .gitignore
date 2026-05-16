@@ -1,0 +1,23 @@
+# Environments
+.venv/
+.venv313/
+venv/
+env/
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Models (too large for standard GitHub)
+backend/*.h5
+backend/*.pkl
+
+# Frontend build
+frontend/dist/
+frontend/build/
+
+# OS files
+.DS_Store
+Thumbs.db
