@@ -11,6 +11,32 @@
   --border:rgba(255,255,255,0.09);
   --dark:#060f09;
 }
+
+/* SLEEK SCROLLBAR */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(76, 175, 80, 0.3);
+  border-radius: 10px;
+  transition: 0.3s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--bright);
+}
+
+/* History List Specific Scrollbar */
+.history-list {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(76, 175, 80, 0.3) transparent;
+}
 html{scroll-behavior:smooth;}
 body{
   background:var(--g1);

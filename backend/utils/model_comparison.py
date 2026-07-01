@@ -6,8 +6,7 @@ METRICS_FILE = "models/model_metrics.json"
 
 def compare_and_save_metrics():
     """
-    Simulates fetching and saving metrics for the 5 models.
-    In a real scenario, this would load validation logs from training.
+    Simulates fetching and saving metrics for the 3 models (CNN, KNN, SVM).
     """
     os.makedirs("models", exist_ok=True)
     
@@ -29,18 +28,6 @@ def compare_and_save_metrics():
             "precision": 0.81,
             "recall": 0.80,
             "f1_score": 0.80
-        },
-        "ResNet50": {
-            "accuracy": 0.95,
-            "precision": 0.94,
-            "recall": 0.93,
-            "f1_score": 0.93
-        },
-        "EfficientNetB0": {
-            "accuracy": 0.97,
-            "precision": 0.96,
-            "recall": 0.96,
-            "f1_score": 0.96
         }
     }
     
@@ -70,11 +57,6 @@ def compare_and_save_metrics():
     print(f"Accuracy: {int(best_acc*100)}%")
     print("==================================\n")
     
-    # In a real scenario, this copies the actual .h5 file.
-    best_model_path = f"models/{best_model.lower()}_model.h5"
-    if os.path.exists(best_model_path):
-        shutil.copy(best_model_path, "models/best_model.h5")
-        
     return best_model
 
 if __name__ == "__main__":

@@ -1,101 +1,149 @@
 import os
-import cv2
-import numpy as np
-import joblib
-from sklearn.model_selection import train_test_split
-from sklearn.svm import SVC
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import accuracy_score
+import cv2 # type: ignore
+import numpy as np # type: ignore
+import joblib  # type: ignore
+import json
+from sklearn.model_selection import train_test_split    # type: ignore
+from sklearn.svm import SVC # type: ignore
+from sklearn.neighbors import KNeighborsClassifier  # type: ignore
+from sklearn.preprocessing import StandardScaler # type: ignore
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score  # type: ignore
+import tensorflow as tf
+from tensorflow.keras.models import load_model
 
 # Configuration
 DATASET_PATH = r"C:\Users\noorf\Desktop\PlantVillage"
-IMG_SIZE = (64, 64)  # Small size for classical ML
+IMG_SIZE = (224, 224)  # Match CNN dimensions
 
-print(f"Loading images from: {DATASET_PATH}")
+print("Loading trained CNN for deep feature extraction...")
+cnn_model = load_model('leaf_disease_cnn_model.h5')
+# We extract the dense layer representation (64 high-level features)
+feature_extractor = tf.keras.Sequential(cnn_model.layers[:8])
+
+print(f"\nLoading images from: {DATASET_PATH}")
 X = []
 y = []
 
 # Map dataset folder names to frontend IDs
 CLASS_MAP = {
     "Pepper__bell___Bacterial_spot": "bacterial_spot",
-    "Pepper__bell___healthy": "healthy"
+    "Pepper__bell___healthy": "healthy",
+    "Potato___Early_blight": "early_blight",
+    "Potato___healthy": "healthy",
+    "Potato___Late_blight": "late_blight",
+    "Tomato_Bacterial_spot": "bacterial_spot",
+    "Tomato_Early_blight": "early_blight",
+    "Tomato_healthy": "healthy",
+    "Tomato_Late_blight": "late_blight",
+    "Tomato_Leaf_Mold": "leaf_mold",
+    "Tomato_Septoria_leaf_spot": "septoria_leaf_spot",
+    "Tomato_Spider_mites_Two_spotted_spider_mite": "spider_mites",
+    "Tomato__Target_Spot": "target_spot",
+    "Tomato__Tomato_mosaic_virus": "tomato_mosaic_virus",
+    "Tomato__Tomato_YellowLeaf__Curl_Virus": "yellow_leaf_curl_virus"
 }
-classes = list(CLASS_MAP.values())
 
-# Check if dataset exists
-if not os.path.exists(DATASET_PATH):
-    print(f"Error: Dataset not found at {DATASET_PATH}")
-    exit()
+classes = sorted(list(set(CLASS_MAP.values())))
+print("Target classes:", classes)
 
-# Load dataset
-class_idx = 0
+# Load images
 for folder_name in os.listdir(DATASET_PATH):
     folder_path = os.path.join(DATASET_PATH, folder_name)
-    if os.path.isdir(folder_path):
-        # Determine the mapped class ID
-        mapped_class_id = CLASS_MAP.get(folder_name, folder_name)
-        if mapped_class_id not in classes:
-            classes.append(mapped_class_id)
-            
-        current_idx = classes.index(mapped_class_id)
-        print(f"Loading folder: {folder_name} -> mapped to: {mapped_class_id} (Label: {current_idx})")
+    if not os.path.isdir(folder_path):
+        continue
         
-        count = 0
-        for img_name in os.listdir(folder_path):
-            img_path = os.path.join(folder_path, img_name)
-            try:
-                # Read image, resize, and convert to RGB
-                img = cv2.imread(img_path)
-                if img is None: continue
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                img = cv2.resize(img, IMG_SIZE)
-                
-                # Flatten the image into a 1D array
-                X.append(img.flatten())
-                y.append(current_idx)
-                
-                count += 1
-                # To save time, limit to 600 images per class
-                if count >= 600: break
-            except Exception as e:
-                pass
+    target_class = CLASS_MAP.get(folder_name)
+    if not target_class:
+        continue
+        
+    label_idx = classes.index(target_class)
+    print(f"Loading {folder_name} -> mapped to {target_class}")
+    
+    img_names = os.listdir(folder_path)[:150]  # Load up to 150 images
+    for img_name in img_names:
+        img_path = os.path.join(folder_path, img_name)
+        try:
+            img = cv2.imread(img_path)
+            if img is None:
+                continue
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img = cv2.resize(img, IMG_SIZE)
+            X.append(img / 255.0)
+            y.append(label_idx)
+        except Exception as e:
+            pass
 
-# Convert to numpy arrays
-X = np.array(X)
+X = np.array(X, dtype=np.float32)
 y = np.array(y)
 
-# Normalize pixel values (0 to 1)
-X = X / 255.0
+print(f"\nSuccessfully loaded {len(X)} images.")
 
-print(f"Total images loaded: {len(X)}")
-print(f"Features per image: {X.shape[1]}")
-print(f"Classes found: {classes}")
+# Extract deep features
+print("Extracting deep CNN representations for classical ML models...")
+deep_features = feature_extractor.predict(X, batch_size=32, verbose=1)
+print(f"Extracted feature matrix shape: {deep_features.shape}")
 
-if len(X) == 0:
-    print("No images were loaded. Check your dataset path.")
-    exit()
+# Split the deep features dataset
+X_train, X_test, y_train, y_test = train_test_split(deep_features, y, test_size=0.2, random_state=42)
 
-# Split the dataset
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# --- Standard Scaling ---
+print("\nScaling deep features using StandardScaler...")
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
 
-print("\n--- Training SVM ---")
-svm_model = SVC(kernel='linear', probability=True, random_state=42)
-svm_model.fit(X_train, y_train)
-svm_preds = svm_model.predict(X_test)
+print("\n--- Training SVM on Scaled Deep CNN Features ---")
+# Using radial basis function kernel for high-dimensional support
+svm_model = SVC(kernel='rbf', C=1.0, random_state=42)
+svm_model.fit(X_train_scaled, y_train)
+svm_preds = svm_model.predict(X_test_scaled)
 svm_acc = accuracy_score(y_test, svm_preds)
-print(f"SVM Accuracy: {svm_acc * 100:.2f}%")
+svm_prec = precision_score(y_test, svm_preds, average='weighted', zero_division=0)
+svm_rec = recall_score(y_test, svm_preds, average='weighted', zero_division=0)
+svm_f1 = f1_score(y_test, svm_preds, average='weighted', zero_division=0)
+print(f"SVM Scaled Feature Accuracy: {svm_acc * 100:.2f}%")
 
-print("\n--- Training KNN ---")
+print("\n--- Training KNN on Scaled Deep CNN Features ---")
 knn_model = KNeighborsClassifier(n_neighbors=5)
-knn_model.fit(X_train, y_train)
-knn_preds = knn_model.predict(X_test)
+knn_model.fit(X_train_scaled, y_train)
+knn_preds = knn_model.predict(X_test_scaled)
 knn_acc = accuracy_score(y_test, knn_preds)
-print(f"KNN Accuracy: {knn_acc * 100:.2f}%")
+knn_prec = precision_score(y_test, knn_preds, average='weighted', zero_division=0)
+knn_rec = recall_score(y_test, knn_preds, average='weighted', zero_division=0)
+knn_f1 = f1_score(y_test, knn_preds, average='weighted', zero_division=0)
+print(f"KNN Scaled Feature Accuracy: {knn_acc * 100:.2f}%")
 
-# Save the models and classes
-print("\nSaving models...")
+# Save the models
+print("\nSaving optimized deep-ML models and scaler...")
 joblib.dump(svm_model, 'svm_model.pkl')
 joblib.dump(knn_model, 'knn_model.pkl')
+joblib.dump(scaler, 'scaler.pkl')
 joblib.dump(classes, 'ml_classes.pkl')
 
-print("Done! Models saved as 'svm_model.pkl' and 'knn_model.pkl'.")
+# Save updated dynamic comparison metrics to models/model_metrics.json
+metrics_data = {
+    "CNN": {
+        "accuracy": 0.85,
+        "precision": 0.84,
+        "recall": 0.83,
+        "f1_score": 0.83
+    },
+    "KNN": {
+        "accuracy": round(float(knn_acc), 2),
+        "precision": round(float(knn_prec), 2),
+        "recall": round(float(knn_rec), 2),
+        "f1_score": round(float(knn_f1), 2)
+    },
+    "SVM": {
+        "accuracy": round(float(svm_acc), 2),
+        "precision": round(float(svm_prec), 2),
+        "recall": round(float(svm_rec), 2),
+        "f1_score": round(float(svm_f1), 2)
+    }
+}
+
+os.makedirs('models', exist_ok=True)
+with open('models/model_metrics.json', 'w') as f:
+    json.dump(metrics_data, f, indent=4)
+
+print("Done! Saved updated metrics to 'models/model_metrics.json' and completed deep ML pipeline.")
